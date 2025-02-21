@@ -7,6 +7,9 @@ import analyticsModel from './src/models/analytics.js';
 import { mongoConnect } from './src/config/db.js';
 
 
+
+const PORT = process.env.PORT || 3000;
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { /* options */ });
@@ -28,12 +31,12 @@ app.use(
 //routes
 app.use('/api/analytics',analyticsRouter);
 
-// Socket.io connection setup
+
 io.on('connection', (socket) => {
-  console.log('A user connected');
+  console.log('User connected', socket.id);
 
   socket.on('disconnect', () => {
-    console.log('A user disconnected');
+    console.log(socket.id, ' disconnected');
   });
 });
 
@@ -42,39 +45,53 @@ const eventChangeStream = analyticsModel.watch();
 
 let eventCountLast5Minutes = 0;
 let eventCountHistory = [];
-const ROLLING_WINDOW = 30; // 30 min rolling avg
+let eventTypeCounts = {};
+let totalEventCount = 0
+let peakEventsPerMinute = 0;
+let userEventCounts = {};
+let activeUsers = new Set();
 
-// MongoDB Change Stream to count events in the last 5 minutes
+const ROLLING_WINDOW = 1; // per min rolling avg
+
 eventChangeStream.on('change', (change) => {
-  const eventTimestamp = change.fullDocument.timestamp;
+  if (change.operationType === 'insert') {
+      const eventType = change.fullDocument.eventType;
+      const userId = change.fullDocument.userId;
+      const eventTimestamp = change.fullDocument.timestamp;
 
-  // Update the event count for the last 5 minutes
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-  if (eventTimestamp >= fiveMinutesAgo) {
-    eventCountLast5Minutes++;
+      // Update counts
+      totalEventCount++;
+      eventTypeCounts[eventType] = (eventTypeCounts[eventType] || 0) + 1;
+      activeUsers.add(userId);
+      userEventCounts[userId] = (userEventCounts[userId] || 0) + 1;
+
+      // Rolling window calculations
+      const xMinutesAgo = new Date(Date.now() - ROLLING_WINDOW * 60 * 1000);
+      eventCountHistory.push(eventTimestamp);
+      eventCountHistory = eventCountHistory.filter(timestamp => timestamp > xMinutesAgo);
+      const rollingAverage = eventCountHistory.length / ROLLING_WINDOW;
+      peakEventsPerMinute = Math.max(peakEventsPerMinute, rollingAverage);
+
+      // Sort top users
+      const topUsers = Object.entries(userEventCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5);
+
+      io.emit('realTimeAggregations', {
+          totalEventCount,
+          eventCountLast5Minutes,
+          rollingAverage,
+          peakEventsPerMinute,
+          eventTypeCounts,
+          activeUsersCount: activeUsers.size,
+          topUsers
+      });
   }
-
-  // Update rolling average window
-  eventCountHistory.push(eventTimestamp);
-  // Remove events older than the 30-minute window
-  const thirtyMinutesAgo = new Date(Date.now() - ROLLING_WINDOW * 60 * 1000);
-  eventCountHistory = eventCountHistory.filter(timestamp => timestamp > thirtyMinutesAgo);
-
-  // Calculate rolling average
-  const rollingAverage = eventCountHistory.length / ROLLING_WINDOW;
-
-  // Emit the updated aggregation data to clients
-  io.emit('realTimeAggregations', {
-    eventCountLast5Minutes,
-    rollingAverage
-  });
 });
 
 
 
 
-// Start server
-const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   mongoConnect()
