@@ -10,7 +10,12 @@ const PORT = process.env.PORT || 3000;
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:5173",
+    methods: ["GET", "PUT", "POST", "PATCH", "DELETE"],
+  }
+});
 
 app.use(express.json());
 app.use(
