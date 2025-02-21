@@ -40,17 +40,15 @@ export const getAnalytics = async (req, res) => {
                 });
             }
 
-            // Sort by event count (descending)
             pipeline.push({ $sort: { totalEvents: -1 } });
 
-            // Add pagination
             pipeline.push({ $skip: skip }, { $limit: limitNumber });
 
             response = await analyticsModel.aggregate(pipeline);
         } else {
             response = await analyticsModel
                 .find(query)
-                .sort({ timestamp: -1 }) // Latest first
+                .sort({ timestamp: -1 })
                 .skip(skip)
                 .limit(limitNumber);
         }

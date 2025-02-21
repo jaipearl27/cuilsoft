@@ -42,7 +42,7 @@ let activeUsers = new Set();
 let eventCountHistory = [];
 let topUsers = [];
 
-const ROLLING_WINDOW = 1; // Rolling window in minutes
+const ROLLING_WINDOW = 1; // Rolling window for x minutes
 
 
 const calculateAnalytics = (events) => {
@@ -83,7 +83,6 @@ const calculateAnalytics = (events) => {
     .slice(0, 5)
     .map(([userId, eventCount]) => ({ userId, eventCount }));
 
-  // Emit updated data
   io.emit('realTimeAggregations', {
     totalEventCount,
     eventCountLast5Minutes,
@@ -96,7 +95,6 @@ const calculateAnalytics = (events) => {
 };
 
 
-// Initialize analytics on server start
 const initializeAnalytics = async () => {
   console.log("Initializing analytics from database...");
 
@@ -109,20 +107,18 @@ const initializeAnalytics = async () => {
   }
 };
 
-// Listen for real-time changes using MongoDB Change Streams
 eventChangeStream.on('change', async (change) => {
   if (change.operationType === 'insert') {
     try {
       const event = await analyticsModel.find({}, { eventType: 1, userId: 1, timestamp: 1 });
       if (event) {
-        // Remove old events from the rolling window
+     
         const xMinutesAgo = new Date(Date.now() - ROLLING_WINDOW * 60 * 1000);
         eventCountHistory = eventCountHistory.filter(e => e >= xMinutesAgo);
 
-        // Add new event to rolling history
+
         eventCountHistory.push(event.timestamp);
 
-        // Recalculate metrics
         calculateAnalytics(event);
       }
     } catch (error) {
@@ -136,7 +132,6 @@ eventChangeStream.on('change', async (change) => {
 io.on('connection', (socket) => {
   console.log('User connected', socket.id);
 
-  // Send current real-time metrics to new users
   socket.emit('realTimeAggregations', {
     totalEventCount,
     eventCountLast5Minutes,
@@ -152,7 +147,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start server
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   mongoConnect();
