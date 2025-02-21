@@ -1,6 +1,6 @@
 sample backend .env:-
 
-MONGO_URI=<your mongodb uri here>
+MONGO_URI="your mongodb uri here"
 
 
 
