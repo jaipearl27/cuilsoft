@@ -5,7 +5,7 @@ export const getAnalytics = async (req, res) => {
 
     const query = {};
 
-    //filterssss
+    // Filters
     if (eventType) query.eventType = eventType;
     if (userId) query.userId = userId;
     if (startDate || endDate) {
@@ -18,46 +18,49 @@ export const getAnalytics = async (req, res) => {
     const skip = (page - 1) * limit;
     const limitNumber = parseInt(limit);
 
-    let pipeline = [
-        { $match: query },
-        { $skip: skip },
-        { $limit: limitNumber },
-        { $sort: { timestamp: -1 } }
-    ];
+    try {
+        let response;
 
-    if (aggregateBy) {
-        if (aggregateBy === 'eventType') {
-            pipeline = [
-                { $match: query },
-                {
+        if (aggregateBy) {
+            let pipeline = [{ $match: query }];
+
+            if (aggregateBy === 'eventType') {
+                pipeline.push({
                     $group: {
                         _id: "$eventType",
                         totalEvents: { $sum: 1 }
                     }
-                },
-                { $sort: { totalEvents: -1 } }
-            ];
-        } else if (aggregateBy === 'userId') {
-            pipeline = [
-                { $match: query },
-                {
+                });
+            } else if (aggregateBy === 'userId') {
+                pipeline.push({
                     $group: {
                         _id: "$userId",
                         totalEvents: { $sum: 1 }
                     }
-                },
-                { $sort: { totalEvents: -1 } }
-            ];
-        }
-    }
+                });
+            }
 
-    try {
-        const aggregationResults = await analyticsModel.aggregate(pipeline);
-        res.json(aggregationResults);
+            // Sort by event count (descending)
+            pipeline.push({ $sort: { totalEvents: -1 } });
+
+            // Add pagination
+            pipeline.push({ $skip: skip }, { $limit: limitNumber });
+
+            response = await analyticsModel.aggregate(pipeline);
+        } else {
+            response = await analyticsModel
+                .find(query)
+                .sort({ timestamp: -1 }) // Latest first
+                .skip(skip)
+                .limit(limitNumber);
+        }
+
+        res.json(response);
     } catch (error) {
-        res.status(500).json({ message: 'Error fetching events' });
+        res.status(500).json({ message: 'Error fetching analytics data' });
     }
-}
+};
+
 
 
 export const addEvent = async (req, res) => {
