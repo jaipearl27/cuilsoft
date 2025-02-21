@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import io from "socket.io-client";
 import axios from "axios";
 import Dashboard from "./components/Dashboard";
+import { socket } from "./socket";
 
-
-const socket = io(import.meta.env.VITE_SOCKET_URL);
 
 function App() {
   const [analytics, setAnalytics] = useState({
@@ -24,7 +22,6 @@ function App() {
     socket.connect();
 
 
-    // Fetch initial historical event data
     axios.get(`${import.meta.env.VITE_API_URL}/analytics`)
       .then((res) => {
         setEventHistory(res.data);
@@ -48,7 +45,6 @@ function App() {
       socket.on('disconnect', onDisconnect);
 
 
-    // Listen for real-time updates
     socket.on("realTimeAggregations", (data) => {
       setAnalytics(data);
     });

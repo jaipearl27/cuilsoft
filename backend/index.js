@@ -44,18 +44,24 @@ let topUsers = [];
 
 const ROLLING_WINDOW = 1; // Rolling window in minutes
 
-// Shared function for analytics calculation
+
 const calculateAnalytics = (events) => {
   totalEventCount = events.length;
   eventTypeCounts = {};
   userEventCounts = {};
   activeUsers.clear();
+  eventCountLast5Minutes = 0;
   eventCountHistory = [];
 
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
   const xMinutesAgo = new Date(Date.now() - ROLLING_WINDOW * 60 * 1000);
+  
+
+  console.log(events)
 
   events.forEach(({ eventType, userId, timestamp }) => {
+    if (!eventType || !userId) return;  // Ignore bad data
+
     eventTypeCounts[eventType] = (eventTypeCounts[eventType] || 0) + 1;
     userEventCounts[userId] = (userEventCounts[userId] || 0) + 1;
     activeUsers.add(userId);
@@ -65,7 +71,7 @@ const calculateAnalytics = (events) => {
     }
 
     if (timestamp >= xMinutesAgo) {
-      eventCountHistory.push(timestamp);
+      eventCountHistory.push({ eventType, userId, timestamp });
     }
   });
 
@@ -89,6 +95,7 @@ const calculateAnalytics = (events) => {
   });
 };
 
+
 // Initialize analytics on server start
 const initializeAnalytics = async () => {
   console.log("Initializing analytics from database...");
@@ -106,15 +113,24 @@ const initializeAnalytics = async () => {
 eventChangeStream.on('change', async (change) => {
   if (change.operationType === 'insert') {
     try {
-      const event = await analyticsModel.findById(change.documentKey._id, { eventType: 1, userId: 1, timestamp: 1 });
+      const event = await analyticsModel.find({}, { eventType: 1, userId: 1, timestamp: 1 });
       if (event) {
-        calculateAnalytics([event, ...eventCountHistory]);
+        // Remove old events from the rolling window
+        const xMinutesAgo = new Date(Date.now() - ROLLING_WINDOW * 60 * 1000);
+        eventCountHistory = eventCountHistory.filter(e => e >= xMinutesAgo);
+
+        // Add new event to rolling history
+        eventCountHistory.push(event.timestamp);
+
+        // Recalculate metrics
+        calculateAnalytics(event);
       }
     } catch (error) {
       console.error("Error processing change stream event:", error);
     }
   }
 });
+
 
 // WebSocket connection
 io.on('connection', (socket) => {
